@@ -13,12 +13,6 @@
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
     <style>
-        #map {
-            height: 600px;
-            width: 100%;
-            border-radius: 0.5rem;
-        }
-
         .layer-control {
             background: white;
             padding: 10px;
@@ -148,7 +142,7 @@
                         <button type="button" id="saveMapBtn"
                             class="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition duration-300 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                             disabled>
-                            💾 Save as Image (Boundary Area Only)
+                            💾 Save as Image (with Legend)
                         </button>
                     </div>
                 </form>
@@ -181,9 +175,88 @@
                         <div id="layerList"></div>
                     </div>
                 </div>
-                <div id="map" class="shadow-inner"></div>
+
+                <!-- Map Wrapper: Map + Legend side by side -->
+                <div id="mapWrapper" class="flex gap-4">
+                    <!-- Map Container (flex-1 = takes remaining space) -->
+                    <div id="map" class="shadow-inner flex-1 rounded-lg" style="height: 600px;"></div>
+
+                    <!-- Legend Container (fixed width, hidden by default) -->
+                    <div id="mapLegend" class="hidden bg-white border-2 border-gray-800 rounded-lg p-4 shadow-lg"
+                        style="width: 280px; height: 600px; overflow-y: auto;">
+                        <!-- Header Section -->
+                        <div class="border-b-2 border-gray-800 pb-3 mb-4 text-center">
+                            <h3 class="font-bold text-sm uppercase tracking-wide">PETA RENCANA KERJA</h3>
+                            <p class="text-xs mt-1 font-medium">USAHA PEMANFAATAN HUTAN</p>
+                            <div class="mt-2 pt-2 border-t border-gray-400">
+                                <p class="text-xs font-bold">PT ITCI KARTIKA UTAMA</p>
+                                <p class="text-xs">KAB. KUTAI KARTANEGARA</p>
+                            </div>
+                        </div>
+
+                        <!-- Legend Section -->
+                        <div class="space-y-3">
+                            <div class="text-xs font-bold uppercase tracking-wide border-b border-gray-400 pb-2 mb-3">
+                                KETERANGAN
+                            </div>
+
+                            <!-- Boundary Legend -->
+                            <div class="flex items-center gap-3" id="legendBoundary">
+                                <div class="w-8 h-8 border-4 border-black bg-red-50 rounded flex-shrink-0"></div>
+                                <span class="text-xs font-medium">Batas Wilayah Kerja</span>
+                            </div>
+
+                            <!-- Road Legend -->
+                            <div class="items-center gap-3 hidden" id="legendRoad">
+                                <div class="w-8 h-2 bg-red-600 rounded flex-shrink-0"></div>
+                                <span class="text-xs font-medium">Jalan/Akses</span>
+                            </div>
+
+                            <!-- River Legend -->
+                            <div class="items-center gap-3 hidden" id="legendRiver">
+                                <div class="w-8 h-2 bg-blue-500 rounded flex-shrink-0"></div>
+                                <span class="text-xs font-medium">Sungai/Aliran Air</span>
+                            </div>
+                        </div>
+
+                        <!-- Coordinate Info -->
+                        <div class="mt-4 pt-4 border-t-2 border-gray-300">
+                            <div class="text-xs">
+                                <div class="font-bold uppercase tracking-wide mb-2">KOORDINAT PUSAT</div>
+                                <div class="bg-gray-50 p-2 rounded border border-gray-300">
+                                    <div id="legendLat" class="font-mono">Lat: -</div>
+                                    <div id="legendLng" class="font-mono">Lng: -</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Scale & Date Info -->
+                        <div class="mt-4 pt-4 border-t-2 border-gray-300">
+                            <div class="text-xs space-y-2">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-semibold">Skala:</span>
+                                    <span class="font-mono">1:50.000</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="font-semibold">Proyeksi:</span>
+                                    <span>WGS 84</span>
+                                </div>
+                                <div id="legendDate" class="pt-2 border-t border-gray-300 text-center font-medium">
+                                    Tanggal: -
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Footer/Watermark -->
+                        <div class="mt-4 pt-3 border-t border-gray-400 text-center">
+                            <p class="text-xs text-gray-600">Generated by Multi-Layer Map Viewer</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mt-4 text-sm text-gray-500" id="mapInfo">Ready to load data</div>
             </div>
+
         </div>
     </div>
 
@@ -297,19 +370,16 @@
 
                 let totalFeatures = 0;
 
-                // Add layers in order: boundary first, then roads, then rivers
-
+                // Create vector pane
                 if (!map.getPane('vectorPane')) {
                     map.createPane('vectorPane');
-                    map.getPane('vectorPane').style.zIndex = 650; // Di atas tile layer (400)
+                    map.getPane('vectorPane').style.zIndex = 650;
                 }
                 console.log('✓ Custom vector pane created (z-index: 650)');
 
                 const layerOrder = ['boundary', 'road', 'river'];
 
-
                 layerOrder.forEach(layerType => {
-                    const layerData = data.layers?.[layerType] || data[layerType];
                     if (data.layers[layerType]) {
                         const layerData = data.layers[layerType];
                         const geojson = layerData.geojson;
@@ -321,7 +391,6 @@
 
                         totalFeatures += geojson.features.length;
 
-                        // Debug logging
                         console.log(`Loading ${layerType}:`, {
                             features: geojson.features.length,
                             color: layerData.color,
@@ -355,7 +424,6 @@
 
                         layers[layerType] = layer;
 
-                        // DEBUG: Log layer bounds
                         try {
                             const layerBounds = layer.getBounds();
                             console.log(`${layerType} bounds:`, {
@@ -369,15 +437,12 @@
                             console.warn(`Cannot get bounds for ${layerType}`);
                         }
 
-                        // Verify layer added
                         console.log(`✓ ${layerType} layer added to map, visible: ${map.hasLayer(layer)}`);
 
-                        // Store boundary bounds for cropping
                         if (layerType === 'boundary') {
                             boundaryBounds = layer.getBounds();
                         }
 
-                        // Add to layer control
                         layerList.appendChild(createLayerControl(layerData.name, layerData.color, true));
                     } else {
                         console.warn(`${layerType} layer not found in response`);
@@ -428,23 +493,51 @@
                 mapInfo.textContent = `${totalFeatures} features loaded`;
                 saveMapBtn.disabled = false;
 
-                // DEBUG: Tambahkan tombol untuk zoom ke road
+                // ===== Show legend dan update info =====
+                const mapLegend = document.getElementById('mapLegend');
+                mapLegend.classList.remove('hidden');
+
+                // Update coordinate info
+                document.getElementById('legendLat').textContent = `Lat: ${data.center.lat.toFixed(6)}°`;
+                document.getElementById('legendLng').textContent = `Lng: ${data.center.lng.toFixed(6)}°`;
+
+                // Update date
+                const today = new Date();
+                const dateStr = today.toLocaleDateString('id-ID', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                });
+                document.getElementById('legendDate').textContent = `Tanggal: ${dateStr}`;
+
+                // Show legend items based on loaded layers
                 if (layers.road) {
-                    console.log('Road layer exists, you can zoom to it');
-                };
-
-                } catch (error) {
-                    console.error('Error:', error);
-                    showError('Error: ' + error.message);
-                    mapInfo.textContent = 'Error loading data';
-                } finally {
-                    loading.classList.add('hidden');
-                    loadMapBtn.disabled = false;
-                    loadBtnText.textContent = '🗺️ Load Map';
+                    const lr = document.getElementById('legendRoad');
+                    lr.classList.remove('hidden');
+                    lr.classList.add('flex');
+                    console.log('✓ Road legend shown');
                 }
-            });
+                if (layers.river) {
+                    const lrv = document.getElementById('legendRiver');
+                    lrv.classList.remove('hidden');
+                    lrv.classList.add('flex');
+                    console.log('✓ River legend shown');
+                }
 
-        // Save map image - cropped to boundary bounds with all layers visible
+                console.log('✓ Legend box displayed');
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Error: ' + error.message);
+                mapInfo.textContent = 'Error loading data';
+            } finally {
+                loading.classList.add('hidden');
+                loadMapBtn.disabled = false;
+                loadBtnText.textContent = '🗺️ Load Map';
+            }
+        });
+
+        // Save map image WITH LEGEND
         async function saveMapWithCrop() {
             if (!boundaryBounds) {
                 showError('No boundary defined. Please load boundary layer first.');
@@ -460,43 +553,26 @@
             mapInfo.textContent = 'Preparing map for export...';
 
             try {
-                // 1. Simpan state original
                 const originalCenter = map.getCenter();
                 const originalZoom = map.getZoom();
                 const originalLayers = {};
 
-                // 2. Pastikan SEMUA layer visible dan urutannya benar
                 Object.keys(layers).forEach(layerType => {
                     originalLayers[layerType] = map.hasLayer(layers[layerType]);
                     if (!map.hasLayer(layers[layerType])) {
                         map.addLayer(layers[layerType]);
-                        console.log('✓ Added', layerType, 'layer');
                     }
                 });
 
-                // Pastikan urutan layer: river di bawah, road di tengah, boundary paling atas
-                if (layers.river) {
-                    layers.river.bringToFront();
-                    console.log('✓ River brought to front');
-                }
-                if (layers.road) {
-                    layers.road.bringToFront();
-                    console.log('✓ Road brought to front');
-                }
-                if (layers.boundary) {
-                    layers.boundary.bringToFront();
-                    console.log('✓ Boundary brought to front');
-                }
+                if (layers.river) layers.river.bringToFront();
+                if (layers.road) layers.road.bringToFront();
+                if (layers.boundary) layers.boundary.bringToFront();
 
-                console.log('Layer order set: river → road → boundary');
-
-                // 3. Sembunyikan marker
                 const markerVisible = markerLayer && map.hasLayer(markerLayer);
                 if (markerVisible) {
                     map.removeLayer(markerLayer);
                 }
 
-                // 4. Fit map ke boundary dengan padding minimal
                 const bounds = boundaryBounds;
                 map.fitBounds(bounds, {
                     padding: [50, 50],
@@ -505,87 +581,168 @@
                 });
 
                 map.invalidateSize(false);
-
-                // 5. Tunggu rendering - lebih lama untuk memastikan semua layer loaded
                 mapInfo.textContent = 'Rendering layers...';
-
-                // Log semua layer yang visible
-                console.log('Visible layers before capture:');
-                Object.keys(layers).forEach(layerType => {
-                    const isVisible = map.hasLayer(layers[layerType]);
-                    console.log(`- ${layerType}: ${isVisible ? '✓ visible' : '✗ hidden'}`);
-                });
 
                 await new Promise(resolve => setTimeout(resolve, 3000));
 
-                // 6. Get map container
+                // Get map and legend
                 const mapContainer = map.getContainer();
-                const containerWidth = mapContainer.offsetWidth;
-                const containerHeight = mapContainer.offsetHeight;
+                const mapLegend = document.getElementById('mapLegend');
 
-                console.log('Map size:', containerWidth, 'x', containerHeight);
-                console.log('Zoom level:', map.getZoom());
+                const mapWidth = mapContainer.offsetWidth;
+                const mapHeight = mapContainer.offsetHeight;
+                const legendWidth = mapLegend.offsetWidth;
 
-                // 7. Hitung pixel coordinates boundary
-                const nw = map.latLngToContainerPoint(bounds.getNorthWest());
-                const se = map.latLngToContainerPoint(bounds.getSouthEast());
+                console.log('Map size:', mapWidth, 'x', mapHeight);
+                console.log('Legend width:', legendWidth);
 
-                const cropX = Math.max(0, Math.floor(nw.x));
-                const cropY = Math.max(0, Math.floor(nw.y));
-                const cropWidth = Math.min(Math.ceil(se.x - nw.x), containerWidth - cropX);
-                const cropHeight = Math.min(Math.ceil(se.y - nw.y), containerHeight - cropY);
+                // Extract GeoJSON for manual drawing
+                const boundaryGeoJSON = layers.boundary ? layers.boundary.toGeoJSON() : null;
+                const roadGeoJSON = layers.road ? layers.road.toGeoJSON() : null;
+                const riverGeoJSON = layers.river ? layers.river.toGeoJSON() : null;
 
-                console.log('Boundary crop area:', { cropX, cropY, cropWidth, cropHeight });
+                mapInfo.textContent = 'Capturing base map...';
 
-                if (cropWidth <= 0 || cropHeight <= 0) {
-                    throw new Error('Invalid crop dimensions');
-                }
-
-                // 8. Extract boundary coordinates untuk clipping path
-                const boundaryGeoJSON = layers.boundary.toGeoJSON();
-                let boundaryCoords = [];
-
-                // Extract coordinates dari GeoJSON
-                if (boundaryGeoJSON.type === 'FeatureCollection') {
-                    boundaryGeoJSON.features.forEach(feature => {
-                        if (feature.geometry.type === 'Polygon') {
-                            boundaryCoords.push(...feature.geometry.coordinates[0]);
-                        } else if (feature.geometry.type === 'MultiPolygon') {
-                            feature.geometry.coordinates.forEach(polygon => {
-                                boundaryCoords.push(...polygon[0]);
-                            });
-                        }
-                    });
-                } else if (boundaryGeoJSON.geometry.type === 'Polygon') {
-                    boundaryCoords = boundaryGeoJSON.geometry.coordinates[0];
-                } else if (boundaryGeoJSON.geometry.type === 'MultiPolygon') {
-                    boundaryGeoJSON.geometry.coordinates.forEach(polygon => {
-                        boundaryCoords.push(...polygon[0]);
-                    });
-                }
-
-                console.log('Boundary coordinates count:', boundaryCoords.length);
-
-                // 9. Capture full map
-                mapInfo.textContent = 'Capturing map...';
-
-                const fullCanvas = await html2canvas(mapContainer, {
+                // Capture ONLY the map (basemap tiles)
+                const baseCanvas = await html2canvas(mapContainer, {
                     useCORS: true,
                     allowTaint: false,
                     backgroundColor: '#ffffff',
                     logging: false,
                     scale: 2,
-                    width: containerWidth,
-                    height: containerHeight
+                    width: mapWidth,
+                    height: mapHeight
                 });
 
-                console.log('Full canvas captured:', fullCanvas.width, 'x', fullCanvas.height);
+                console.log('Base canvas captured:', baseCanvas.width, 'x', baseCanvas.height);
 
-                // 10. Extract GeoJSON data dari layers untuk manual drawing
-                const riverGeoJSON = layers.river ? layers.river.toGeoJSON() : null;
-                const roadGeoJSON = layers.road ? layers.road.toGeoJSON() : null;
+                // Create final canvas (map + manual layers + legend)
+                const scale = 2;
+                const finalCanvas = document.createElement('canvas');
+                const totalWidth = (mapWidth + legendWidth + 16) * scale; // 16px gap
+                const totalHeight = mapHeight * scale;
 
-                // 11. Restore map state
+                finalCanvas.width = totalWidth;
+                finalCanvas.height = totalHeight;
+
+                const ctx = finalCanvas.getContext('2d');
+
+                // Draw white background
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+                // Draw base map
+                ctx.drawImage(baseCanvas, 0, 0);
+
+                mapInfo.textContent = 'Drawing vector layers...';
+
+                // Helper function to draw lines
+                function drawGeoJSON(geojson, color, width) {
+                    if (!geojson || !geojson.features) return;
+
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = width * scale;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+
+                    geojson.features.forEach(feature => {
+                        if (!feature.geometry) return;
+
+                        const type = feature.geometry.type;
+                        const coords = feature.geometry.coordinates;
+
+                        if (type === 'LineString') {
+                            drawLine(coords);
+                        } else if (type === 'MultiLineString') {
+                            coords.forEach(line => drawLine(line));
+                        } else if (type === 'Polygon') {
+                            drawPolygon(coords);
+                        } else if (type === 'MultiPolygon') {
+                            coords.forEach(polygon => drawPolygon(polygon));
+                        }
+                    });
+                }
+
+                function drawLine(coordinates) {
+                    if (coordinates.length < 2) return;
+
+                    ctx.beginPath();
+                    let started = false;
+
+                    coordinates.forEach((coord, i) => {
+                        const point = map.latLngToContainerPoint([coord[1], coord[0]]);
+                        const x = point.x * scale;
+                        const y = point.y * scale;
+
+                        if (i === 0) {
+                            ctx.moveTo(x, y);
+                            started = true;
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    });
+
+                    if (started) {
+                        ctx.stroke();
+                    }
+                }
+
+                function drawPolygon(coordinates) {
+                    if (!coordinates || coordinates.length === 0) return;
+
+                    // Draw outline only (no fill)
+                    coordinates.forEach(ring => {
+                        if (ring.length < 3) return;
+
+                        ctx.beginPath();
+                        ring.forEach((coord, i) => {
+                            const point = map.latLngToContainerPoint([coord[1], coord[0]]);
+                            const x = point.x * scale;
+                            const y = point.y * scale;
+
+                            if (i === 0) {
+                                ctx.moveTo(x, y);
+                            } else {
+                                ctx.lineTo(x, y);
+                            }
+                        });
+                        ctx.closePath();
+                        ctx.stroke();
+                    });
+                }
+
+                // Draw layers in order
+                if (riverGeoJSON) {
+                    console.log('Drawing rivers...');
+                    drawGeoJSON(riverGeoJSON, '#3b82f6', 0.3);
+                }
+
+                if (roadGeoJSON) {
+                    console.log('Drawing roads...');
+                    drawGeoJSON(roadGeoJSON, '#FF0000', 4);
+                }
+
+                if (boundaryGeoJSON) {
+                    console.log('Drawing boundary...');
+                    drawGeoJSON(boundaryGeoJSON, '#000000', 0.7);
+                }
+
+                mapInfo.textContent = 'Adding legend...';
+
+                // Capture legend
+                const legendCanvas = await html2canvas(mapLegend, {
+                    backgroundColor: '#ffffff',
+                    logging: false,
+                    scale: 2
+                });
+
+                // Draw legend on the right side
+                const legendX = mapWidth * scale + 16 * scale; // 16px gap
+                ctx.drawImage(legendCanvas, legendX, 0);
+
+                console.log('Final canvas size:', finalCanvas.width, 'x', finalCanvas.height);
+
+                // Restore map state
                 if (markerVisible) map.addLayer(markerLayer);
                 Object.keys(originalLayers).forEach(layerType => {
                     if (!originalLayers[layerType] && layers[layerType]) {
@@ -594,172 +751,9 @@
                 });
                 map.setView(originalCenter, originalZoom);
 
-                // 12. Create cropped canvas dengan clipping mask
-                mapInfo.textContent = 'Applying boundary mask...';
-
-                const scale = 2;
-                const croppedCanvas = document.createElement('canvas');
-                croppedCanvas.width = cropWidth * scale;
-                croppedCanvas.height = cropHeight * scale;
-
-                const ctx = croppedCanvas.getContext('2d');
-
-                // Fill white background
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, croppedCanvas.width, croppedCanvas.height);
-
-                // Create clipping path dari boundary polygon
-                ctx.save();
-                ctx.beginPath();
-
-                boundaryCoords.forEach((coord, index) => {
-                    // Convert lat/lng to pixel dalam cropped canvas
-                    const point = map.latLngToContainerPoint([coord[1], coord[0]]);
-                    const x = (point.x - cropX) * scale;
-                    const y = (point.y - cropY) * scale;
-
-                    if (index === 0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
-                });
-
-                ctx.closePath();
-                ctx.clip(); // Apply clipping mask
-
-                // Draw cropped image DENGAN clipping mask
-                ctx.drawImage(
-                    fullCanvas,
-                    cropX * scale,
-                    cropY * scale,
-                    cropWidth * scale,
-                    cropHeight * scale,
-                    0,
-                    0,
-                    cropWidth * scale,
-                    cropHeight * scale
-                );
-
-                ctx.restore();
-
-                // PENTING: Draw rivers dan roads secara manual karena html2canvas gagal capture SVG
-                mapInfo.textContent = 'Drawing vector layers...';
-
-                // Helper function untuk draw LineString/MultiLineString
-                function drawLineString(coordinates, color, width) {
-                    ctx.strokeStyle = color;
-                    ctx.lineWidth = width;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-
-                    coordinates.forEach(line => {
-                        ctx.beginPath();
-                        const coords = Array.isArray(line[0]) ? line : [line];
-
-                        let validPath = false;
-                        coords.forEach((coord, i) => {
-                            // FILTER: Skip koordinat invalid (0,0 atau di luar bounds)
-                            if (!coord || coord.length < 2) return;
-                            const lng = coord[0];
-                            const lat = coord[1];
-
-                            // Skip jika koordinat invalid
-                            if (lng === 0 && lat === 0) return;
-                            if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
-
-                            // Skip jika koordinat terlalu jauh dari boundary (lebih dari 10 derajat)
-                            const boundsCenter = bounds.getCenter();
-                            const latDiff = Math.abs(lat - boundsCenter.lat);
-                            const lngDiff = Math.abs(lng - boundsCenter.lng);
-                            if (latDiff > 10 || lngDiff > 10) return;
-
-                            const point = map.latLngToContainerPoint([lat, lng]);
-                            const x = (point.x - cropX) * scale;
-                            const y = (point.y - cropY) * scale;
-
-                            // Skip jika point di luar canvas
-                            if (x < -1000 || x > croppedCanvas.width + 1000) return;
-                            if (y < -1000 || y > croppedCanvas.height + 1000) return;
-
-                            if (i === 0 || !validPath) {
-                                ctx.moveTo(x, y);
-                                validPath = true;
-                            } else {
-                                ctx.lineTo(x, y);
-                            }
-                        });
-
-                        if (validPath) {
-                            ctx.stroke();
-                        }
-                    });
-                }
-
-                // Draw rivers (biru)
-                if (riverGeoJSON) {
-                    console.log('Drawing rivers...');
-                    const features = riverGeoJSON.features || [riverGeoJSON];
-                    features.forEach(feature => {
-                        if (!feature.geometry) return;
-
-                        if (feature.geometry.type === 'LineString') {
-                            drawLineString([feature.geometry.coordinates], '#0066CC', 0.5 * scale);
-                        } else if (feature.geometry.type === 'MultiLineString') {
-                            drawLineString(feature.geometry.coordinates, '#0066CC', 0.5 * scale);
-                        }
-                    });
-                    console.log('✓ Rivers drawn');
-                }
-
-                // Draw roads (merah/orange)
-                if (roadGeoJSON) {
-                    console.log('Drawing roads...');
-                    const features = roadGeoJSON.features || [roadGeoJSON];
-                    let roadCount = 0;
-                    features.forEach(feature => {
-                        if (!feature.geometry) return;
-
-                        if (feature.geometry.type === 'LineString') {
-                            drawLineString([feature.geometry.coordinates], '#BF092F', 2 * scale);
-                            roadCount++;
-                        } else if (feature.geometry.type === 'MultiLineString') {
-                            drawLineString(feature.geometry.coordinates, '#BF092F', 2 * scale);
-                            roadCount++;
-                        }
-                    });
-                    console.log(`✓ Roads drawn: ${roadCount} features`);
-                } else {
-                    console.log('No road layer to draw');
-                }
-
-                // 12. Draw boundary outline (tebal)
-                ctx.strokeStyle = '#000000';
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-
-                boundaryCoords.forEach((coord, index) => {
-                    const point = map.latLngToContainerPoint([coord[1], coord[0]]);
-                    const x = (point.x - cropX) * scale;
-                    const y = (point.y - cropY) * scale;
-
-                    if (index === 0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
-                });
-
-                ctx.closePath();
-                ctx.stroke();
-
-                console.log('✓ Clipping mask applied');
-                console.log('✓ Boundary outline drawn');
-
-                // 13. Convert to blob and save
                 mapInfo.textContent = 'Saving image...';
 
-                croppedCanvas.toBlob(async (blob) => {
+                finalCanvas.toBlob(async (blob) => {
                     if (!blob) {
                         throw new Error('Failed to create image blob');
                     }
@@ -786,8 +780,8 @@
                                 link.click();
                                 document.body.removeChild(link);
 
-                                showSuccess(`✓ Map saved! Boundary area only: ${Math.round(cropWidth)}x${Math.round(cropHeight)}px`);
-                                mapInfo.textContent = `Saved: ${data.filename}`;
+                                showSuccess('✓ Map with legend saved! Size: ' + finalCanvas.width + 'x' + finalCanvas.height + 'px');
+                                mapInfo.textContent = 'Saved: ' + data.filename;
                                 console.log('✓ Image saved successfully');
                             } else {
                                 throw new Error(data.error || 'Failed to save');
@@ -797,7 +791,7 @@
                             mapInfo.textContent = 'Error uploading';
                         } finally {
                             saveMapBtn.disabled = false;
-                            saveMapBtn.textContent = '💾 Save as Image (Boundary Area Only)';
+                            saveMapBtn.textContent = '💾 Save as Image (with Legend)';
                         }
                     };
                     reader.readAsDataURL(blob);
@@ -808,11 +802,10 @@
                 showError('Error: ' + error.message);
                 mapInfo.textContent = 'Export failed';
                 saveMapBtn.disabled = false;
-                saveMapBtn.textContent = '💾 Save as Image (Boundary Area Only)';
+                saveMapBtn.textContent = '💾 Save as Image (with Legend)';
             }
         }
 
-        // Attach event listener
         saveMapBtn.addEventListener('click', saveMapWithCrop);
     </script>
 </body>
