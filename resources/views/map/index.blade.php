@@ -714,12 +714,12 @@
                 // Draw layers in order
                 if (riverGeoJSON) {
                     console.log('Drawing rivers...');
-                    drawGeoJSON(riverGeoJSON, '#3b82f6', 0.3);
+                    drawGeoJSON(riverGeoJSON, '#3b82f6', 0.2);
                 }
 
                 if (roadGeoJSON) {
                     console.log('Drawing roads...');
-                    drawGeoJSON(roadGeoJSON, '#FF0000', 4);
+                    drawGeoJSON(roadGeoJSON, '#FF0000', 0.25);
                 }
 
                 if (boundaryGeoJSON) {
