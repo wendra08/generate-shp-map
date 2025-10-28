@@ -17,18 +17,41 @@ class MapController extends Controller
     {
         try {
             Log::info('Upload request received', [
-                'latitude' => $request->latitude,
-                'longitude' => $request->longitude,
+                'points' => $request->points,
                 'files' => array_keys($request->allFiles())
             ]);
 
             $request->validate([
-                'latitude' => 'required|numeric|between:-90,90',
-                'longitude' => 'required|numeric|between:-180,180',
+                'points' => 'required|json',
                 'boundary_file' => 'required|file',
                 'road_file' => 'nullable|file',
                 'river_file' => 'nullable|file',
             ]);
+
+            // Parse points dari JSON
+            $points = json_decode($request->points, true);
+
+            if (empty($points)) {
+                throw new \Exception('At least one point is required');
+            }
+
+            // Validasi setiap point
+            foreach ($points as $index => $point) {
+                if (!isset($point['lat']) || !isset($point['lng'])) {
+                    throw new \Exception("Point " . ($index + 1) . " missing coordinates");
+                }
+
+                $lat = floatval($point['lat']);
+                $lng = floatval($point['lng']);
+
+                if ($lat < -90 || $lat > 90) {
+                    throw new \Exception("Point " . ($index + 1) . " has invalid latitude");
+                }
+
+                if ($lng < -180 || $lng > 180) {
+                    throw new \Exception("Point " . ($index + 1) . " has invalid longitude");
+                }
+            }
 
             $layers = [];
 
@@ -45,23 +68,11 @@ class MapController extends Controller
                 'weight' => 3
             ];
 
-            // Process Road File (Optional) - CLIP TO BOUNDARY
-           if ($request->hasFile('road_file')) {
+            // Process Road File (Optional)
+            if ($request->hasFile('road_file')) {
                 $roadFile = $request->file('road_file');
                 $roadGeoJSON = $this->processFile($roadFile, 'road');
                 $roadGeoJSON = $this->fixGeoJSONCoordinates($roadGeoJSON);
-
-                $originalRoadCount = count($roadGeoJSON['features']);
-                Log::info("Road file loaded", ['features' => $originalRoadCount]);
-
-                // Check first road coordinate
-                if ($originalRoadCount > 0 && isset($roadGeoJSON['features'][0]['geometry']['coordinates'])) {
-                    $firstCoord = $roadGeoJSON['features'][0]['geometry']['coordinates'][0] ?? null;
-                    Log::info("First road coordinate", ['coord' => $firstCoord]);
-                }
-
-                // TEMPORARY: Disable clipping untuk test
-                // $roadGeoJSON = $this->clipToBoundary($roadGeoJSON, $boundaryGeoJSON);
 
                 if (!empty($roadGeoJSON['features'])) {
                     $layers['road'] = [
@@ -71,20 +82,15 @@ class MapController extends Controller
                         'weight' => 4,
                         'opacity' => 1
                     ];
-                    Log::info("Road layer added to response", ['features' => count($roadGeoJSON['features'])]);
-                } else {
-                    Log::warning("No roads found within boundary");
                 }
             }
 
-            // Process River File (Optional) - CLIP TO BOUNDARY
+            // Process River File (Optional)
             if ($request->hasFile('river_file')) {
                 $riverFile = $request->file('river_file');
                 $riverGeoJSON = $this->processFile($riverFile, 'river');
                 $riverGeoJSON = $this->fixGeoJSONCoordinates($riverGeoJSON);
 
-                // Clip river to boundary
-                Log::info("Clipping rivers to boundary");
                 $riverGeoJSON = $this->clipToBoundary($riverGeoJSON, $boundaryGeoJSON);
 
                 if (!empty($riverGeoJSON['features'])) {
@@ -94,22 +100,26 @@ class MapController extends Controller
                         'color' => '#3b82f6',
                         'weight' => 2
                     ];
-                } else {
-                    Log::warning("No rivers found within boundary");
                 }
             }
+
+            // Calculate center from all points
+            $centerLat = array_sum(array_column($points, 'lat')) / count($points);
+            $centerLng = array_sum(array_column($points, 'lng')) / count($points);
 
             $response = [
                 'success' => true,
                 'layers' => $layers,
+                'points' => $points,
                 'center' => [
-                    'lat' => (float)$request->latitude,
-                    'lng' => (float)$request->longitude
+                    'lat' => $centerLat,
+                    'lng' => $centerLng
                 ]
             ];
 
             Log::info('Sending successful response', [
-                'layer_count' => count($layers)
+                'layer_count' => count($layers),
+                'points_count' => count($points)
             ]);
 
             return response()->json($response);
@@ -366,12 +376,8 @@ class MapController extends Controller
         return [$lng, $lat];
     }
 
-    /**
-     * Clip layer features to boundary
-     */
     private function clipToBoundary($layerGeoJSON, $boundaryGeoJSON)
     {
-        // Get boundary bounds
         $bounds = $this->getBoundaryBounds($boundaryGeoJSON);
 
         if (!$bounds) {
@@ -381,7 +387,6 @@ class MapController extends Controller
 
         Log::info("Boundary bounds", $bounds);
 
-        // Filter features
         $clippedFeatures = [];
         $originalCount = count($layerGeoJSON['features']);
 
@@ -483,7 +488,6 @@ class MapController extends Controller
             }
         }
 
-        // Need at least 2 points for a line
         return count($clipped) >= 2 ? $clipped : [];
     }
 

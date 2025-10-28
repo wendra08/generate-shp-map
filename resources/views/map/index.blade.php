@@ -40,6 +40,13 @@
             border: 2px solid #fff;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
         }
+
+        .point-item {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
@@ -55,7 +62,7 @@
                         Multi-Layer Map Viewer
                     </span>
                 </h1>
-                <p class="text-xl text-gray-600">Upload boundary, roads, and rivers to visualize your geospatial data
+                <p class="text-xl text-gray-600">Upload boundary, roads, rivers and mark multiple points
                 </p>
             </div>
 
@@ -66,30 +73,28 @@
                 <form id="mapForm" enctype="multipart/form-data" class="space-y-6">
                     @csrf
 
-                    <!-- Coordinates -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label for="latitude" class="block text-sm font-semibold text-gray-700 mb-2">
-                                📍 Latitude
-                            </label>
-                            <input type="number" step="any" id="latitude" name="latitude"
-                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="e.g., 3.1737" required>
+                    <!-- Points Input Section (NEW) -->
+                    <div class="border-2 border-purple-300 rounded-lg p-6 space-y-4 bg-purple-50">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-semibold text-gray-700">📍 Point Locations</h3>
+                            <button type="button" id="addPointBtn"
+                                class="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition">
+                                + Add Point
+                            </button>
                         </div>
 
-                        <div>
-                            <label for="longitude" class="block text-sm font-semibold text-gray-700 mb-2">
-                                📍 Longitude
-                            </label>
-                            <input type="number" step="any" id="longitude" name="longitude"
-                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="e.g., 98.4913" required>
+                        <div id="pointsContainer" class="space-y-3">
+                            <!-- Points will be added here dynamically -->
                         </div>
+
+                        <p class="text-xs text-gray-600 mt-2">
+                            💡 Add multiple points to mark important locations on your map
+                        </p>
                     </div>
 
                     <!-- File Uploads -->
                     <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 space-y-4">
-                        <h3 class="text-lg font-semibold text-gray-700 mb-4">📁 Upload Geographic Layers</h3>
+                        <h3 class="text-lg font-semibold text-gray-700 mb-4">📂 Upload Geographic Layers</h3>
 
                         <!-- Boundary File (Required) -->
                         <div class="bg-gray-50 border-2 border-gray-800 rounded-lg p-4">
@@ -217,6 +222,18 @@
                                 <div class="w-8 h-2 bg-blue-500 rounded flex-shrink-0"></div>
                                 <span class="text-xs font-medium">Sungai/Aliran Air</span>
                             </div>
+
+                            <!-- Points Legend (NEW) -->
+                            <div class="items-center gap-3 hidden" id="legendPoints">
+                                <div class="w-8 h-8 bg-purple-600 rounded-full flex-shrink-0"></div>
+                                <span class="text-xs font-medium">Titik Lokasi</span>
+                            </div>
+                        </div>
+
+                        <!-- Points List (NEW) -->
+                        <div id="legendPointsList" class="hidden mt-4 pt-4 border-t-2 border-gray-300">
+                            <div class="text-xs font-bold uppercase tracking-wide mb-2">DAFTAR TITIK</div>
+                            <div id="legendPointsItems" class="space-y-2 text-xs"></div>
                         </div>
 
                         <!-- Coordinate Info -->
@@ -267,8 +284,9 @@
     <script>
         let map = L.map('map').setView([3.1737, 98.4913], 10);
         let layers = {};
-        let markerLayer = null;
+        let markerLayers = [];
         let boundaryBounds = null;
+        let pointsData = [];
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
@@ -288,6 +306,12 @@
         const mapInfo = document.getElementById('mapInfo');
         const layerControl = document.getElementById('layerControl');
         const layerList = document.getElementById('layerList');
+        const addPointBtn = document.getElementById('addPointBtn');
+        const pointsContainer = document.getElementById('pointsContainer');
+
+        // Color palette for markers
+        const markerColors = ['red', 'blue', 'green', 'orange', 'violet', 'yellow', 'grey', 'black'];
+        let pointCounter = 0;
 
         function showError(message) {
             errorText.textContent = message;
@@ -332,10 +356,81 @@
             return item;
         }
 
+        // Add point input fields
+        function addPointInput() {
+            pointCounter++;
+            const colorIndex = (pointCounter - 1) % markerColors.length;
+            const color = markerColors[colorIndex];
+
+            const pointDiv = document.createElement('div');
+            pointDiv.className = 'point-item bg-white p-3 rounded-lg border border-purple-200';
+            pointDiv.dataset.pointId = pointCounter;
+            pointDiv.innerHTML = `
+                <input type="text" placeholder="Point name (e.g., Camp Site)"
+                    class="point-name px-3 py-2 border border-gray-300 rounded-md text-sm w-full"
+                    value="Point ${pointCounter}">
+                <input type="number" step="any" placeholder="Latitude"
+                    class="point-lat px-3 py-2 border border-gray-300 rounded-md text-sm w-full" required>
+                <input type="number" step="any" placeholder="Longitude"
+                    class="point-lng px-3 py-2 border border-gray-300 rounded-md text-sm w-full" required>
+                <button type="button" class="remove-point bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-md text-sm">
+                    ✕
+                </button>
+            `;
+
+            const removeBtn = pointDiv.querySelector('.remove-point');
+            removeBtn.addEventListener('click', () => {
+                pointDiv.remove();
+                if (pointsContainer.children.length === 0) {
+                    pointCounter = 0;
+                }
+            });
+
+            pointsContainer.appendChild(pointDiv);
+        }
+
+        // Initialize with one point
+        addPointInput();
+
+        addPointBtn.addEventListener('click', addPointInput);
+
+        // Collect points data from form
+        function collectPoints() {
+            const points = [];
+            const pointItems = pointsContainer.querySelectorAll('.point-item');
+
+            pointItems.forEach((item, index) => {
+                const name = item.querySelector('.point-name').value.trim();
+                const lat = parseFloat(item.querySelector('.point-lat').value);
+                const lng = parseFloat(item.querySelector('.point-lng').value);
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    const colorIndex = index % markerColors.length;
+                    points.push({
+                        name: name || `Point ${index + 1}`,
+                        lat: lat,
+                        lng: lng,
+                        color: markerColors[colorIndex]
+                    });
+                }
+            });
+
+            return points;
+        }
+
         mapForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            // Collect points
+            const points = collectPoints();
+
+            if (points.length === 0) {
+                showError('Please add at least one point with valid coordinates');
+                return;
+            }
+
             const formData = new FormData(e.target);
+            formData.append('points', JSON.stringify(points));
 
             hideMessages();
             loading.classList.remove('hidden');
@@ -362,10 +457,11 @@
                     throw new Error(data.error || 'Failed to load map');
                 }
 
-                // Clear existing layers
+                // Clear existing layers and markers
                 Object.values(layers).forEach(layer => map.removeLayer(layer));
                 layers = {};
-                if (markerLayer) map.removeLayer(markerLayer);
+                markerLayers.forEach(marker => map.removeLayer(marker));
+                markerLayers = [];
                 layerList.innerHTML = '';
 
                 let totalFeatures = 0;
@@ -375,7 +471,6 @@
                     map.createPane('vectorPane');
                     map.getPane('vectorPane').style.zIndex = 650;
                 }
-                console.log('✓ Custom vector pane created (z-index: 650)');
 
                 const layerOrder = ['boundary', 'road', 'river'];
 
@@ -385,18 +480,10 @@
                         const geojson = layerData.geojson;
 
                         if (!geojson.features || geojson.features.length === 0) {
-                            console.warn(`${layerType} has no features`);
                             return;
                         }
 
                         totalFeatures += geojson.features.length;
-
-                        console.log(`Loading ${layerType}:`, {
-                            features: geojson.features.length,
-                            color: layerData.color,
-                            weight: layerData.weight,
-                            firstFeatureType: geojson.features[0]?.geometry?.type
-                        });
 
                         const layer = L.geoJSON(geojson, {
                             pane: 'vectorPane',
@@ -406,7 +493,6 @@
                                 opacity: layerData.opacity || 0.8,
                                 fillColor: layerData.fillColor || layerData.color,
                                 fillOpacity: layerType === 'boundary' ? (layerData.fillOpacity || 0) : 0.3,
-                                dashArray: layerType === 'boundary' ? '' : ''
                             },
                             onEachFeature: (feature, layer) => {
                                 if (feature.properties && Object.keys(feature.properties).length > 0) {
@@ -424,80 +510,62 @@
 
                         layers[layerType] = layer;
 
-                        try {
-                            const layerBounds = layer.getBounds();
-                            console.log(`${layerType} bounds:`, {
-                                north: layerBounds.getNorth().toFixed(4),
-                                south: layerBounds.getSouth().toFixed(4),
-                                east: layerBounds.getEast().toFixed(4),
-                                west: layerBounds.getWest().toFixed(4),
-                                center: layerBounds.getCenter()
-                            });
-                        } catch (e) {
-                            console.warn(`Cannot get bounds for ${layerType}`);
-                        }
-
-                        console.log(`✓ ${layerType} layer added to map, visible: ${map.hasLayer(layer)}`);
-
                         if (layerType === 'boundary') {
                             boundaryBounds = layer.getBounds();
                         }
 
                         layerList.appendChild(createLayerControl(layerData.name, layerData.color, true));
-                    } else {
-                        console.warn(`${layerType} layer not found in response`);
                     }
                 });
 
-                console.log('Adjusting layer z-index...');
-                if (layers.boundary) {
-                    layers.boundary.bringToFront();
-                    console.log('✓ Boundary brought to front');
-                }
-                if (layers.river) {
-                    layers.river.bringToFront();
-                    console.log('✓ River brought to front');
-                }
-                if (layers.road) {
-                    layers.road.bringToFront();
-                    console.log('✓ Road brought to front');
-                }
+                // Adjust layer z-index
+                if (layers.boundary) layers.boundary.bringToFront();
+                if (layers.river) layers.river.bringToFront();
+                if (layers.road) layers.road.bringToFront();
 
-                // Add center marker
-                markerLayer = L.marker([data.center.lat, data.center.lng], {
-                    icon: L.icon({
-                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-                        iconSize: [25, 41],
-                        iconAnchor: [12, 41],
-                        popupAnchor: [1, -34],
-                        shadowSize: [41, 41]
-                    })
-                }).addTo(map);
+                // Add markers for all points
+                pointsData = data.points;
+                data.points.forEach((point, index) => {
+                    const marker = L.marker([point.lat, point.lng], {
+                        icon: L.icon({
+                            iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${point.color}.png`,
+                            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                            iconSize: [25, 41],
+                            iconAnchor: [12, 41],
+                            popupAnchor: [1, -34],
+                            shadowSize: [41, 41]
+                        })
+                    }).addTo(map);
 
-                markerLayer.bindPopup(`
-                    <div class="text-sm">
-                        <strong class="text-red-600">Your Location</strong><br>
-                        <strong>Lat:</strong> ${data.center.lat}<br>
-                        <strong>Lng:</strong> ${data.center.lng}
-                    </div>
-                `).openPopup();
+                    marker.bindPopup(`
+                        <div class="text-sm">
+                            <strong class="text-${point.color}-600">${point.name}</strong><br>
+                            <strong>Lat:</strong> ${point.lat.toFixed(6)}<br>
+                            <strong>Lng:</strong> ${point.lng.toFixed(6)}
+                        </div>
+                    `);
 
-                // Fit map to boundary
+                    markerLayers.push(marker);
+                });
+
+                // Fit map to boundary or points
                 if (boundaryBounds && boundaryBounds.isValid()) {
                     map.fitBounds(boundaryBounds, { padding: [50, 50] });
+                } else if (data.points.length > 0) {
+                    const bounds = L.latLngBounds(data.points.map(p => [p.lat, p.lng]));
+                    map.fitBounds(bounds, { padding: [50, 50] });
                 }
 
                 layerControl.classList.remove('hidden');
-                showSuccess(`Map loaded! ${totalFeatures} features across ${Object.keys(layers).length} layers.`);
-                mapInfo.textContent = `${totalFeatures} features loaded`;
+                showSuccess(`Map loaded! ${totalFeatures} features and ${data.points.length} points.`);
+                mapInfo.textContent = `${totalFeatures} features + ${data.points.length} points loaded`;
                 saveMapBtn.disabled = false;
 
-                // ===== Show legend dan update info =====
+                // Show legend
                 const mapLegend = document.getElementById('mapLegend');
                 mapLegend.classList.remove('hidden');
 
-                // Update coordinate info
+                // Update coordinate info (center of all points)
                 document.getElementById('legendLat').textContent = `Lat: ${data.center.lat.toFixed(6)}°`;
                 document.getElementById('legendLng').textContent = `Lng: ${data.center.lng.toFixed(6)}°`;
 
@@ -510,21 +578,42 @@
                 });
                 document.getElementById('legendDate').textContent = `Tanggal: ${dateStr}`;
 
-                // Show legend items based on loaded layers
+                // Show legend items
                 if (layers.road) {
                     const lr = document.getElementById('legendRoad');
                     lr.classList.remove('hidden');
                     lr.classList.add('flex');
-                    console.log('✓ Road legend shown');
                 }
                 if (layers.river) {
                     const lrv = document.getElementById('legendRiver');
                     lrv.classList.remove('hidden');
                     lrv.classList.add('flex');
-                    console.log('✓ River legend shown');
                 }
 
-                console.log('✓ Legend box displayed');
+                // Show points legend
+                if (data.points.length > 0) {
+                    const lp = document.getElementById('legendPoints');
+                    lp.classList.remove('hidden');
+                    lp.classList.add('flex');
+
+                    const legendPointsList = document.getElementById('legendPointsList');
+                    const legendPointsItems = document.getElementById('legendPointsItems');
+                    legendPointsList.classList.remove('hidden');
+                    legendPointsItems.innerHTML = '';
+
+                    data.points.forEach((point, index) => {
+                        const item = document.createElement('div');
+                        item.className = 'flex items-center gap-2 bg-gray-50 p-2 rounded';
+                        item.innerHTML = `
+                            <div class="w-3 h-3 rounded-full bg-${point.color}-600 flex-shrink-0"></div>
+                            <div class="flex-1">
+                                <div class="font-medium">${point.name}</div>
+                                <div class="text-xs text-gray-600">${point.lat.toFixed(4)}°, ${point.lng.toFixed(4)}°</div>
+                            </div>
+                        `;
+                        legendPointsItems.appendChild(item);
+                    });
+                }
 
             } catch (error) {
                 console.error('Error:', error);
@@ -537,14 +626,10 @@
             }
         });
 
-        // Save map image WITH LEGEND
+        // Save map image WITH LEGEND and MARKERS
         async function saveMapWithCrop() {
-            if (!boundaryBounds) {
-                showError('No boundary defined. Please load boundary layer first.');
-                return;
-            }
-            if (!layers.boundary) {
-                showError('Boundary layer not found.');
+            if (!boundaryBounds && pointsData.length === 0) {
+                showError('No data to export. Please load boundary or points first.');
                 return;
             }
 
@@ -568,24 +653,27 @@
                 if (layers.road) layers.road.bringToFront();
                 if (layers.boundary) layers.boundary.bringToFront();
 
-                const markerVisible = markerLayer && map.hasLayer(markerLayer);
-                if (markerVisible) {
-                    map.removeLayer(markerLayer);
+                // Fit to boundary or points
+                if (boundaryBounds && boundaryBounds.isValid()) {
+                    map.fitBounds(boundaryBounds, {
+                        padding: [50, 50],
+                        animate: false,
+                        maxZoom: 10
+                    });
+                } else if (pointsData.length > 0) {
+                    const bounds = L.latLngBounds(pointsData.map(p => [p.lat, p.lng]));
+                    map.fitBounds(bounds, {
+                        padding: [50, 50],
+                        animate: false,
+                        maxZoom: 10
+                    });
                 }
-
-                const bounds = boundaryBounds;
-                map.fitBounds(bounds, {
-                    padding: [50, 50],
-                    animate: false,
-                    maxZoom: 10
-                });
 
                 map.invalidateSize(false);
                 mapInfo.textContent = 'Rendering layers...';
 
                 await new Promise(resolve => setTimeout(resolve, 3000));
 
-                // Get map and legend
                 const mapContainer = map.getContainer();
                 const mapLegend = document.getElementById('mapLegend');
 
@@ -593,17 +681,12 @@
                 const mapHeight = mapContainer.offsetHeight;
                 const legendWidth = mapLegend.offsetWidth;
 
-                console.log('Map size:', mapWidth, 'x', mapHeight);
-                console.log('Legend width:', legendWidth);
-
-                // Extract GeoJSON for manual drawing
                 const boundaryGeoJSON = layers.boundary ? layers.boundary.toGeoJSON() : null;
                 const roadGeoJSON = layers.road ? layers.road.toGeoJSON() : null;
                 const riverGeoJSON = layers.river ? layers.river.toGeoJSON() : null;
 
                 mapInfo.textContent = 'Capturing base map...';
 
-                // Capture ONLY the map (basemap tiles)
                 const baseCanvas = await html2canvas(mapContainer, {
                     useCORS: true,
                     allowTaint: false,
@@ -614,12 +697,9 @@
                     height: mapHeight
                 });
 
-                console.log('Base canvas captured:', baseCanvas.width, 'x', baseCanvas.height);
-
-                // Create final canvas (map + manual layers + legend)
                 const scale = 2;
                 const finalCanvas = document.createElement('canvas');
-                const totalWidth = (mapWidth + legendWidth + 16) * scale; // 16px gap
+                const totalWidth = (mapWidth + legendWidth + 16) * scale;
                 const totalHeight = mapHeight * scale;
 
                 finalCanvas.width = totalWidth;
@@ -627,16 +707,13 @@
 
                 const ctx = finalCanvas.getContext('2d');
 
-                // Draw white background
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
 
-                // Draw base map
                 ctx.drawImage(baseCanvas, 0, 0);
 
                 mapInfo.textContent = 'Drawing vector layers...';
 
-                // Helper function to draw lines
                 function drawGeoJSON(geojson, color, width) {
                     if (!geojson || !geojson.features) return;
 
@@ -690,7 +767,6 @@
                 function drawPolygon(coordinates) {
                     if (!coordinates || coordinates.length === 0) return;
 
-                    // Draw outline only (no fill)
                     coordinates.forEach(ring => {
                         if (ring.length < 3) return;
 
@@ -711,39 +787,30 @@
                     });
                 }
 
-                // Draw layers in order
                 if (riverGeoJSON) {
-                    console.log('Drawing rivers...');
                     drawGeoJSON(riverGeoJSON, '#3b82f6', 0.2);
                 }
 
                 if (roadGeoJSON) {
-                    console.log('Drawing roads...');
-                    drawGeoJSON(roadGeoJSON, '#FF0000', 0.25);
+                    drawGeoJSON(roadGeoJSON, '#FF0000', 0.15);
                 }
 
                 if (boundaryGeoJSON) {
-                    console.log('Drawing boundary...');
                     drawGeoJSON(boundaryGeoJSON, '#000000', 0.7);
                 }
 
                 mapInfo.textContent = 'Adding legend...';
 
-                // Capture legend
                 const legendCanvas = await html2canvas(mapLegend, {
                     backgroundColor: '#ffffff',
                     logging: false,
                     scale: 2
                 });
 
-                // Draw legend on the right side
-                const legendX = mapWidth * scale + 16 * scale; // 16px gap
+                const legendX = mapWidth * scale + 16 * scale;
                 ctx.drawImage(legendCanvas, legendX, 0);
 
-                console.log('Final canvas size:', finalCanvas.width, 'x', finalCanvas.height);
-
                 // Restore map state
-                if (markerVisible) map.addLayer(markerLayer);
                 Object.keys(originalLayers).forEach(layerType => {
                     if (!originalLayers[layerType] && layers[layerType]) {
                         map.removeLayer(layers[layerType]);
@@ -780,9 +847,8 @@
                                 link.click();
                                 document.body.removeChild(link);
 
-                                showSuccess('✓ Map with legend saved! Size: ' + finalCanvas.width + 'x' + finalCanvas.height + 'px');
+                                showSuccess('✔ Map with legend saved! Size: ' + finalCanvas.width + 'x' + finalCanvas.height + 'px');
                                 mapInfo.textContent = 'Saved: ' + data.filename;
-                                console.log('✓ Image saved successfully');
                             } else {
                                 throw new Error(data.error || 'Failed to save');
                             }
