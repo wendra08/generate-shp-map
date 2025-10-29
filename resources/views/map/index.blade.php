@@ -792,7 +792,7 @@
                 }
 
                 if (roadGeoJSON) {
-                    drawGeoJSON(roadGeoJSON, '#FF0000', 0.15);
+                    drawGeoJSON(roadGeoJSON, '#FF0000', 0.25);
                 }
 
                 if (boundaryGeoJSON) {
