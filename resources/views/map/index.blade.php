@@ -1,4 +1,17 @@
-<!DOCTYPE html>
+mapInfo.textContent = 'Waiting for tiles to load...';
+
+                // Wait for map tiles to fully load AND panes to hide
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                mapInfo.textContent = 'Capturing base map...';
+
+                // Get map and legend containers
+                const mapContainer = map.getContainer();
+                const mapLegend = document.getElementById('mapLegend');
+
+                const mapWidth = mapContainer.offsetWidth;
+                const mapHeight = mapContainer.offsetHeight;
+                const<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -642,6 +655,7 @@
                 const originalZoom = map.getZoom();
                 const originalLayers = {};
 
+                // Store layer visibility state
                 Object.keys(layers).forEach(layerType => {
                     originalLayers[layerType] = map.hasLayer(layers[layerType]);
                     if (!map.hasLayer(layers[layerType])) {
@@ -649,6 +663,7 @@
                     }
                 });
 
+                // Bring layers to front in correct order
                 if (layers.river) layers.river.bringToFront();
                 if (layers.road) layers.road.bringToFront();
                 if (layers.boundary) layers.boundary.bringToFront();
@@ -670,11 +685,27 @@
                 }
 
                 map.invalidateSize(false);
-                mapInfo.textContent = 'Rendering layers...';
 
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                // CRITICAL: Hide ALL marker-related panes
+                console.log('Hiding marker panes...');
+                const panesToHide = ['markerPane', 'shadowPane', 'overlayPane', 'tooltipPane', 'popupPane'];
+                const originalDisplay = {};
 
-                const mapContainer = map.getContainer();
+                panesToHide.forEach(paneName => {
+                    const pane = map.getPane(paneName);
+                    if (pane) {
+                        originalDisplay[paneName] = pane.style.display || '';
+                        pane.style.display = 'none';
+                        console.log(`✓ Hidden ${paneName}`);
+                    }
+                });
+
+                mapInfo.textContent = 'Waiting for tiles to load...';
+
+                // Wait for map tiles to fully load AND panes to hide
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                mapInfo.textContent = 'Capturing base map...';
                 const mapLegend = document.getElementById('mapLegend');
 
                 const mapWidth = mapContainer.offsetWidth;
@@ -799,6 +830,81 @@
                     drawGeoJSON(boundaryGeoJSON, '#000000', 0.7);
                 }
 
+                // Draw markers manually
+                mapInfo.textContent = 'Drawing markers...';
+
+                const markerColorMap = {
+                    'red': '#dc2626',
+                    'blue': '#2563eb',
+                    'green': '#16a34a',
+                    'orange': '#ea580c',
+                    'violet': '#7c3aed',
+                    'yellow': '#ca8a04',
+                    'grey': '#6b7280',
+                    'black': '#000000'
+                };
+
+                pointsData.forEach(point => {
+                    const markerPoint = map.latLngToContainerPoint([point.lat, point.lng]);
+                    const x = markerPoint.x * scale;
+                    const y = markerPoint.y * scale;
+
+                    // Draw marker pin shape
+                    const markerSize = 20 * scale;
+                    const markerColor = markerColorMap[point.color] || '#dc2626';
+
+                    // Draw teardrop/pin shape
+                    ctx.save();
+                    ctx.translate(x, y - markerSize);
+
+                    // Pin body (teardrop shape)
+                    ctx.beginPath();
+                    ctx.arc(0, 0, markerSize * 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = markerColor;
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2 * scale;
+                    ctx.stroke();
+
+                    // Pin point
+                    ctx.beginPath();
+                    ctx.moveTo(0, markerSize * 0.4);
+                    ctx.lineTo(-markerSize * 0.15, markerSize * 0.8);
+                    ctx.lineTo(markerSize * 0.15, markerSize * 0.8);
+                    ctx.closePath();
+                    ctx.fillStyle = markerColor;
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1 * scale;
+                    ctx.stroke();
+
+                    // Inner white circle
+                    ctx.beginPath();
+                    ctx.arc(0, 0, markerSize * 0.2, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+
+                    ctx.restore();
+
+                    // Draw label below marker
+                    if (point.name) {
+                        ctx.save();
+                        ctx.font = `bold ${11 * scale}px Arial`;
+                        ctx.fillStyle = '#000000';
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 3 * scale;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'top';
+
+                        const labelY = y + 8 * scale;
+                        ctx.strokeText(point.name, x, labelY);
+                        ctx.fillText(point.name, x, labelY);
+                        ctx.restore();
+                    }
+                });
+
+                console.log(`✓ Drew ${pointsData.length} markers on canvas`);
+
                 mapInfo.textContent = 'Adding legend...';
 
                 const legendCanvas = await html2canvas(mapLegend, {
@@ -810,7 +916,18 @@
                 const legendX = mapWidth * scale + 16 * scale;
                 ctx.drawImage(legendCanvas, legendX, 0);
 
-                // Restore map state
+                console.log('Final canvas size:', finalCanvas.width, 'x', finalCanvas.height);
+
+                // Restore map state - Show marker panes again
+                console.log('Restoring marker panes...');
+                panesToHide.forEach(paneName => {
+                    const pane = map.getPane(paneName);
+                    if (pane && originalDisplay[paneName] !== undefined) {
+                        pane.style.display = originalDisplay[paneName];
+                        console.log(`✓ Restored ${paneName}`);
+                    }
+                });
+
                 Object.keys(originalLayers).forEach(layerType => {
                     if (!originalLayers[layerType] && layers[layerType]) {
                         map.removeLayer(layers[layerType]);
