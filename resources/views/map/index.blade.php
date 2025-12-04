@@ -1,17 +1,4 @@
-mapInfo.textContent = 'Waiting for tiles to load...';
-
-                // Wait for map tiles to fully load AND panes to hide
-                await new Promise(resolve => setTimeout(resolve, 1000));
-
-                mapInfo.textContent = 'Capturing base map...';
-
-                // Get map and legend containers
-                const mapContainer = map.getContainer();
-                const mapLegend = document.getElementById('mapLegend');
-
-                const mapWidth = mapContainer.offsetWidth;
-                const mapHeight = mapContainer.offsetHeight;
-                const<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
